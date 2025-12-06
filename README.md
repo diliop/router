@@ -237,4 +237,4 @@ The continuous integration pipeline includes comprehensive testing, benchmarking
 
 ## Acknowledgement
 
-This router adapted the [SGLang Model Gateway](https://github.com/sgl-project/sglang/tree/main/sgl-model-gateway) API design and implementation for those sharing functionalities.
+This router a fork of the [SGLang Model Gateway](https://github.com/sgl-project/sglang/tree/main/sgl-model-gateway). We would like to explicitly acknowledge and thank the original project. At this stage, the fork includes only minimal changes to preserve the existing interface and ensure compatibility with vLLM. We anticipate further divergence as we pursue the roadmap we have in mind, which is the reason for creating the fork.
