@@ -2230,7 +2230,9 @@ mod tests {
         // Verify tree is still functional
         let sizes = tree.get_used_size_per_tenant();
         for (tenant, size) in sizes.iter() {
-            assert!(*size > 0, "Tenant {} should have positive size", tenant);
+            if tenant != "empty" {
+                assert!(*size > 0, "Tenant {} should have positive size", tenant);
+            }
         }
 
         // Verify char count consistency

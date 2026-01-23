@@ -107,6 +107,19 @@ cargo run --release -- \
 
 ## Configuration
 
+### Authentication
+
+Enable bearer-token validation by listing validation URLs (comma-separated) in `.env` via `API_KEY_VALIDATION_URLS` or passing `--api-key-validation-urls`.
+When set, all HTTP endpoints require `Authorization: Bearer <token>` and tokens are validated with HTTP 200 responses.
+
+```bash
+# .env
+API_KEY_VALIDATION_URLS=https://codebase.helmholtz.cloud/api/v4/user
+
+# CLI override
+vllm-router --api-key-validation-urls https://codebase.helmholtz.cloud/api/v4/user
+```
+
 ### Metrics
 
 Prometheus metrics endpoint available at `127.0.0.1:29000` by default.

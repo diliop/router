@@ -58,6 +58,8 @@ pub async fn get_dp_aware_workers(
 ///
 /// # Example
 /// ```
+/// use vllm_router_rs::routers::http::dp_utils::extract_dp_rank;
+///
 /// let (base_url, rank) = extract_dp_rank("http://worker:8000@3").unwrap();
 /// assert_eq!(base_url, "http://worker:8000");
 /// assert_eq!(rank, 3);
@@ -93,6 +95,8 @@ pub fn extract_dp_rank(worker_url: &str) -> Result<(&str, usize), String> {
 ///
 /// # Example
 /// ```
+/// use vllm_router_rs::routers::http::dp_utils::parse_worker_url;
+///
 /// let (base, rank) = parse_worker_url("http://worker:8000@3");
 /// assert_eq!(base, "http://worker:8000");
 /// assert_eq!(rank, Some(3));
@@ -121,6 +125,8 @@ pub fn parse_worker_url(worker_url: &str) -> (String, Option<usize>) {
 ///
 /// # Example
 /// ```
+/// use vllm_router_rs::routers::http::dp_utils::add_dp_rank_header;
+///
 /// let client = reqwest::Client::new();
 /// let mut request = client.post("http://worker:8000/v1/generate");
 /// request = add_dp_rank_header(request, Some(3));

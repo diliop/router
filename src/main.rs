@@ -191,6 +191,10 @@ struct CliArgs {
     #[arg(long)]
     api_key: Option<String>,
 
+    /// API key validation URLs (defaults to env file)
+    #[arg(long, num_args = 0..)]
+    api_key_validation_urls: Vec<String>,
+
     /// Backend to route requests to (vllm, trtllm, openai, anthropic)
     #[arg(long, value_enum, default_value_t = Backend::Vllm, alias = "runtime")]
     backend: Backend,
@@ -540,6 +544,18 @@ impl CliArgs {
             _ => Self::determine_connection_mode(&all_urls),
         };
 
+        let api_key_validation_urls = if !self.api_key_validation_urls.is_empty() {
+            self.api_key_validation_urls.clone()
+        } else if let Ok(raw_urls) = std::env::var("API_KEY_VALIDATION_URLS") {
+            raw_urls
+                .split(',')
+                .map(|url| url.trim().to_string())
+                .filter(|url| !url.is_empty())
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         // Build RouterConfig
         Ok(RouterConfig {
             mode,
@@ -553,6 +569,7 @@ impl CliArgs {
             worker_startup_check_interval_secs: self.worker_startup_check_interval,
             intra_node_data_parallel_size: self.intra_node_data_parallel_size,
             api_key: self.api_key.clone(),
+            api_key_validation_urls,
             discovery,
             metrics,
             log_dir: self.log_dir.clone(),
@@ -646,6 +663,7 @@ impl CliArgs {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenvy::dotenv().ok();
     println!("DEBUG: Main function started");
 
     // Parse prefill arguments manually before clap parsing

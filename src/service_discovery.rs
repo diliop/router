@@ -602,6 +602,8 @@ mod tests {
             tokenizer: None,      // HTTP mode doesn't need tokenizer
             router_manager: None, // Test doesn't need router manager
             response_storage: Arc::new(crate::data_connector::MemoryResponseStorage::new()),
+            api_key_cache: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            api_key_validation_urls: Arc::new(Vec::new()),
         });
 
         let router = Router::new(vec![], &app_context).await.unwrap();

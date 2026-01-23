@@ -172,6 +172,7 @@ mod test_pd_routing {
                 worker_startup_check_interval_secs: 1,
                 intra_node_data_parallel_size: 1,
                 api_key: None,
+                api_key_validation_urls: vec![],
                 discovery: None,
                 metrics: None,
                 log_dir: None,
@@ -197,9 +198,14 @@ mod test_pd_routing {
             };
 
             // Router creation will fail due to health checks, but config should be valid
-            let app_context =
-                vllm_router_rs::server::AppContext::new(config, reqwest::Client::new(), 64, None)
-                    .expect("Failed to create AppContext");
+            let app_context = vllm_router_rs::server::AppContext::new(
+                config.clone(),
+                reqwest::Client::new(),
+                64,
+                None,
+                config.api_key_validation_urls.clone(),
+            )
+            .expect("Failed to create AppContext");
             let app_context = std::sync::Arc::new(app_context);
             let result = RouterFactory::create_router(&app_context).await;
             assert!(result.is_err());

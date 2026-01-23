@@ -31,11 +31,12 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
 use std::{
+    collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},
     sync::Arc,
     time::Duration,
 };
-use tokio::{net::TcpListener, signal, spawn};
+use tokio::{net::TcpListener, signal, spawn, sync::RwLock};
 use tracing::{error, info, warn, Level};
 
 #[derive(Clone)]
@@ -48,6 +49,8 @@ pub struct AppContext {
     pub policy_registry: Arc<PolicyRegistry>,
     pub router_manager: Option<Arc<RouterManager>>,
     pub response_storage: SharedResponseStorage,
+    pub api_key_cache: Arc<RwLock<HashMap<String, bool>>>,
+    pub api_key_validation_urls: Arc<Vec<String>>,
 }
 
 impl AppContext {
@@ -56,6 +59,7 @@ impl AppContext {
         client: Client,
         max_concurrent_requests: usize,
         rate_limit_tokens_per_second: Option<usize>,
+        api_key_validation_urls: Vec<String>,
     ) -> Result<Self, String> {
         let rate_limit_tokens = rate_limit_tokens_per_second.unwrap_or(max_concurrent_requests);
         let rate_limiter = Arc::new(TokenBucket::new(max_concurrent_requests, rate_limit_tokens));
@@ -102,6 +106,8 @@ impl AppContext {
             policy_registry,
             router_manager,
             response_storage,
+            api_key_cache: Arc::new(RwLock::new(HashMap::new())),
+            api_key_validation_urls: Arc::new(api_key_validation_urls),
         })
     }
 }
@@ -120,31 +126,66 @@ async fn sink_handler() -> Response {
 }
 
 // Health check endpoints
-async fn liveness(State(state): State<Arc<AppState>>) -> Response {
+async fn liveness(State(state): State<Arc<AppState>>, req: Request) -> Response {
+    let headers = req.headers().clone();
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.liveness()
 }
 
-async fn readiness(State(state): State<Arc<AppState>>) -> Response {
+async fn readiness(State(state): State<Arc<AppState>>, req: Request) -> Response {
+    let headers = req.headers().clone();
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.readiness()
 }
 
 async fn health(State(state): State<Arc<AppState>>, req: Request) -> Response {
+    let headers = req.headers().clone();
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.health(req).await
 }
 
 async fn health_generate(State(state): State<Arc<AppState>>, req: Request) -> Response {
+    let headers = req.headers().clone();
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.health_generate(req).await
 }
 
 async fn get_server_info(State(state): State<Arc<AppState>>, req: Request) -> Response {
+    let headers = req.headers().clone();
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.get_server_info(req).await
 }
 
 async fn v1_models(State(state): State<Arc<AppState>>, req: Request) -> Response {
+    let headers = req.headers().clone();
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.get_models(req).await
 }
 
 async fn get_model_info(State(state): State<Arc<AppState>>, req: Request) -> Response {
+    let headers = req.headers().clone();
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.get_model_info(req).await
 }
 
@@ -155,6 +196,10 @@ async fn generate(
     headers: http::HeaderMap,
     Json(body): Json<GenerateRequest>,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state
         .router
         .route_generate(Some(&headers), &body, None)
@@ -166,6 +211,10 @@ async fn v1_chat_completions(
     headers: http::HeaderMap,
     Json(body): Json<ChatCompletionRequest>,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.route_chat(Some(&headers), &body, None).await
 }
 
@@ -174,6 +223,10 @@ async fn v1_completions(
     headers: http::HeaderMap,
     Json(body): Json<CompletionRequest>,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state
         .router
         .route_completion(Some(&headers), &body, None)
@@ -185,6 +238,10 @@ async fn rerank(
     headers: http::HeaderMap,
     Json(body): Json<RerankRequest>,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.route_rerank(Some(&headers), &body, None).await
 }
 
@@ -193,6 +250,10 @@ async fn v1_rerank(
     headers: http::HeaderMap,
     Json(body): Json<V1RerankReqInput>,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state
         .router
         .route_rerank(Some(&headers), &body.into(), None)
@@ -204,6 +265,10 @@ async fn v1_responses(
     headers: http::HeaderMap,
     Json(body): Json<ResponsesRequest>,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state
         .router
         .route_responses(Some(&headers), &body, None)
@@ -215,6 +280,10 @@ async fn v1_embeddings(
     headers: http::HeaderMap,
     Json(body): Json<EmbeddingRequest>,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state
         .router
         .route_embeddings(Some(&headers), &body, None)
@@ -226,6 +295,10 @@ async fn v1_responses_get(
     Path(response_id): Path<String>,
     headers: http::HeaderMap,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state
         .router
         .get_response(Some(&headers), &response_id)
@@ -237,6 +310,10 @@ async fn v1_responses_cancel(
     Path(response_id): Path<String>,
     headers: http::HeaderMap,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state
         .router
         .cancel_response(Some(&headers), &response_id)
@@ -248,6 +325,10 @@ async fn v1_responses_delete(
     Path(response_id): Path<String>,
     headers: http::HeaderMap,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     // Python server does not support this yet
     state
         .router
@@ -260,12 +341,19 @@ async fn v1_responses_list_input_items(
     Path(response_id): Path<String>,
     headers: http::HeaderMap,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     // Python server does not support this yet
     state
         .router
         .list_response_input_items(Some(&headers), &response_id)
         .await
 }
+
+const AUTH_FAILURE_MESSAGE: &str =
+    "You must provide a valid API key. Obtain one from http://helmholtz.cloud";
 
 // ---------- Worker management endpoints (Legacy) ----------
 
@@ -274,17 +362,90 @@ struct UrlQuery {
     url: String,
 }
 
+async fn authorize_request(
+    state: &Arc<AppState>,
+    headers: &http::HeaderMap,
+) -> Result<(), Response> {
+    let validation_urls = state.context.api_key_validation_urls.as_ref();
+    if validation_urls.is_empty() {
+        return Ok(());
+    }
+
+    let auth_header = headers
+        .get(http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| (StatusCode::UNAUTHORIZED, AUTH_FAILURE_MESSAGE).into_response())?;
+
+    if let Some(valid) = state.context.api_key_cache.read().await.get(token).copied() {
+        if valid {
+            return Ok(());
+        }
+        return Err((StatusCode::UNAUTHORIZED, AUTH_FAILURE_MESSAGE).into_response());
+    }
+
+    let mut validated = false;
+    for url in validation_urls {
+        match state
+            .context
+            .client
+            .get(url)
+            .header(http::header::AUTHORIZATION, format!("Bearer {token}"))
+            .send()
+            .await
+        {
+            Ok(response) if response.status() == StatusCode::OK => {
+                validated = true;
+                break;
+            }
+            Ok(_) => {
+                continue;
+            }
+            Err(err) => {
+                warn!("Failed to validate API key against {url}: {err}");
+            }
+        }
+    }
+
+    state
+        .context
+        .api_key_cache
+        .write()
+        .await
+        .insert(token.to_string(), validated);
+
+    if validated {
+        Ok(())
+    } else {
+        Err((StatusCode::UNAUTHORIZED, AUTH_FAILURE_MESSAGE).into_response())
+    }
+}
+
 async fn add_worker(
     State(state): State<Arc<AppState>>,
     Query(UrlQuery { url }): Query<UrlQuery>,
+    headers: http::HeaderMap,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     match state.router.add_worker(&url).await {
         Ok(message) => (StatusCode::OK, message).into_response(),
         Err(error) => (StatusCode::BAD_REQUEST, error).into_response(),
     }
 }
 
-async fn list_workers(State(state): State<Arc<AppState>>) -> Response {
+async fn list_workers(State(state): State<Arc<AppState>>, headers: http::HeaderMap) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     let worker_list = state.router.get_worker_urls();
     Json(serde_json::json!({ "urls": worker_list })).into_response()
 }
@@ -292,7 +453,12 @@ async fn list_workers(State(state): State<Arc<AppState>>) -> Response {
 async fn remove_worker(
     State(state): State<Arc<AppState>>,
     Query(UrlQuery { url }): Query<UrlQuery>,
+    headers: http::HeaderMap,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.remove_worker(&url);
     (
         StatusCode::OK,
@@ -301,11 +467,19 @@ async fn remove_worker(
         .into_response()
 }
 
-async fn flush_cache(State(state): State<Arc<AppState>>, _req: Request) -> Response {
+async fn flush_cache(State(state): State<Arc<AppState>>, headers: http::HeaderMap) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.flush_cache().await
 }
 
-async fn get_loads(State(state): State<Arc<AppState>>, _req: Request) -> Response {
+async fn get_loads(State(state): State<Arc<AppState>>, headers: http::HeaderMap) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     state.router.get_worker_loads().await
 }
 
@@ -314,8 +488,13 @@ async fn get_loads(State(state): State<Arc<AppState>>, _req: Request) -> Respons
 /// POST /workers - Add a new worker with full configuration
 async fn create_worker(
     State(state): State<Arc<AppState>>,
+    headers: http::HeaderMap,
     Json(config): Json<WorkerConfigRequest>,
 ) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     // Check if we have a RouterManager (enable_igw=true)
     if let Some(router_manager) = &state.router_manager {
         // Call RouterManager's add_worker method directly with the full config
@@ -345,8 +524,14 @@ async fn create_worker(
     }
 }
 
-/// GET /workers - List all workers with details
-async fn list_workers_rest(State(state): State<Arc<AppState>>) -> Response {
+async fn list_workers_rest(
+    State(state): State<Arc<AppState>>,
+    headers: http::HeaderMap,
+) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     if let Some(router_manager) = &state.router_manager {
         let response = router_manager.list_workers();
         Json(response).into_response()
@@ -389,7 +574,15 @@ async fn list_workers_rest(State(state): State<Arc<AppState>>) -> Response {
 }
 
 /// GET /workers/{url} - Get specific worker info
-async fn get_worker(State(state): State<Arc<AppState>>, Path(url): Path<String>) -> Response {
+async fn get_worker(
+    State(state): State<Arc<AppState>>,
+    Path(url): Path<String>,
+    headers: http::HeaderMap,
+) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     if let Some(router_manager) = &state.router_manager {
         if let Some(worker) = router_manager.get_worker(&url) {
             Json(worker).into_response()
@@ -420,7 +613,15 @@ async fn get_worker(State(state): State<Arc<AppState>>, Path(url): Path<String>)
 }
 
 /// DELETE /workers/{url} - Remove a worker
-async fn delete_worker(State(state): State<Arc<AppState>>, Path(url): Path<String>) -> Response {
+async fn delete_worker(
+    State(state): State<Arc<AppState>>,
+    Path(url): Path<String>,
+    headers: http::HeaderMap,
+) -> Response {
+    if let Err(response) = authorize_request(&state, &headers).await {
+        return response;
+    }
+
     if let Some(router_manager) = &state.router_manager {
         match router_manager.remove_worker_from_registry(&url) {
             Ok(response) => (StatusCode::OK, Json(response)).into_response(),
@@ -588,6 +789,7 @@ pub async fn startup(config: ServerConfig) -> Result<(), Box<dyn std::error::Err
         client.clone(),
         config.router_config.max_concurrent_requests,
         config.router_config.rate_limit_tokens_per_second,
+        config.router_config.api_key_validation_urls.clone(),
     )?;
     println!("DEBUG: AppContext created");
 

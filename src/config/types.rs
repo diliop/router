@@ -1,4 +1,5 @@
 use super::ConfigResult;
+use crate::config::validation::ConfigValidator;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -29,6 +30,9 @@ pub struct RouterConfig {
     pub intra_node_data_parallel_size: usize,
     /// The api key used for the authorization with the worker
     pub api_key: Option<String>,
+    /// API key validation URLs (if set, incoming requests must validate against them)
+    #[serde(default)]
+    pub api_key_validation_urls: Vec<String>,
     /// Service discovery configuration (optional)
     pub discovery: Option<DiscoveryConfig>,
     /// Metrics configuration (optional)
@@ -417,6 +421,7 @@ impl Default for RouterConfig {
             worker_startup_check_interval_secs: 30,
             intra_node_data_parallel_size: 1,
             api_key: None,
+            api_key_validation_urls: vec![],
             discovery: None,
             metrics: None,
             log_dir: None,
@@ -455,7 +460,7 @@ impl RouterConfig {
 
     /// Validate the configuration
     pub fn validate(&self) -> ConfigResult<()> {
-        crate::config::validation::ConfigValidator::validate(self)
+        ConfigValidator::validate(self)
     }
 
     /// Get the routing mode type as a string
@@ -980,6 +985,7 @@ mod tests {
             worker_startup_check_interval_secs: 5,
             intra_node_data_parallel_size: 1,
             api_key: None,
+            api_key_validation_urls: vec![],
             discovery: Some(DiscoveryConfig {
                 enabled: true,
                 namespace: Some("vllm".to_string()),
@@ -1046,6 +1052,7 @@ mod tests {
             worker_startup_check_interval_secs: 15,
             intra_node_data_parallel_size: 1,
             api_key: None,
+            api_key_validation_urls: vec![],
             discovery: Some(DiscoveryConfig {
                 enabled: true,
                 namespace: None,
@@ -1103,6 +1110,7 @@ mod tests {
             worker_startup_check_interval_secs: 20,
             intra_node_data_parallel_size: 1,
             api_key: None,
+            api_key_validation_urls: vec![],
             discovery: Some(DiscoveryConfig {
                 enabled: true,
                 namespace: Some("production".to_string()),
